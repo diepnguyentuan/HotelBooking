@@ -1,86 +1,138 @@
 package org.hotel.dao;
-
 import org.hotel.config.DatabaseConfig;
 import org.hotel.model.Booking;
 import org.hotel.model.Customer;
 import org.hotel.model.Room;
 import org.hotel.repository.BookingRepository;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
+import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 public class BookingDAO implements BookingRepository {
 
+
+    @Override
     public void save(Booking booking) {
-        String sql = "INSERT INTO booking (booking_id, customer_id, room_id, checkin_time, checkout_time) VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO booking (customer_id, room_id, checkin_time, checkout_time) VALUES (?, ?, ?, ?)";
         try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, booking.getBookingId());
-            statement.setInt(2, booking.getCustomer().getId());
-            statement.setInt(3, booking.getRoom().getRoomNo());
-            statement.setTimestamp(4, Timestamp.valueOf(booking.getCheckinTime()));
-            statement.setTimestamp(5, Timestamp.valueOf(booking.getCheckoutTime()));
-            statement.executeUpdate();
+             PreparedStatement preparedStatement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            preparedStatement.setInt(1, booking.getCustomer().getId());
+            preparedStatement.setInt(2, booking.getRoom().getRoomNo());
+            preparedStatement.setObject(3, booking.getCheckinTime());
+            preparedStatement.setObject(4, booking.getCheckoutTime());
+            int affectedRows = preparedStatement.executeUpdate();
+
+            if (affectedRows == 0) {
+                throw new SQLException("Creating booking failed, no rows affected.");
+            }
+            try (ResultSet generatedKeys = preparedStatement.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    int bookingId = generatedKeys.getInt(1);
+                    booking.setBookingId(bookingId);
+                }
+                else {
+                    throw new SQLException("Creating booking failed, no ID obtained.");
+                }
+            }
+
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
-
-    private boolean isRoomAvailable(int roomId, LocalDateTime checkin, LocalDateTime checkout) {
-        String sql = "SELECT COUNT(*) FROM booking WHERE room_id = ? AND checkin_time < ? AND checkout_time > ?";
-        try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, roomId);
-            statement.setTimestamp(2, Timestamp.valueOf(checkout));
-            statement.setTimestamp(3, Timestamp.valueOf(checkin));
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return resultSet.getInt(1) == 0;
-                }
+    @Override
+    public Booking findBookingBy(int customerId, int roomId, LocalDateTime checkinTime, LocalDateTime checkoutTime){
+        String sql = "SELECT booking_id, customer_id, room_id, checkin_time, checkout_time FROM booking WHERE customer_id = ? AND room_id = ? AND checkin_time = ? AND checkout_time = ?";
+        try(Connection connection = DatabaseConfig.getConnection();
+            PreparedStatement preparedStatement = connection.prepareStatement(sql))
+        {
+            preparedStatement.setInt(1, customerId);
+            preparedStatement.setInt(2, roomId);
+            preparedStatement.setObject(3, checkinTime);
+            preparedStatement.setObject(4, checkoutTime);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            if(resultSet.next()){
+                int bookingId = resultSet.getInt("booking_id");
+                int customerIdDB = resultSet.getInt("customer_id");
+                int roomIdDB = resultSet.getInt("room_id");
+                LocalDateTime checkinTimeDB = resultSet.getObject("checkin_time", LocalDateTime.class);
+                LocalDateTime checkoutTimeDB = resultSet.getObject("checkout_time", LocalDateTime.class);
+                Customer customer = new Customer();
+                customer.setId(customerIdDB);
+                Room room = new Room();
+                room.setRoomNo(roomIdDB);
+                Booking booking = new Booking(bookingId, customer, room, checkinTimeDB, checkoutTimeDB);
+                return booking;
             }
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             e.printStackTrace();
         }
-        return false;
+        return null;
     }
 
     @Override
     public List<Booking> findByCustomerId(int customerId) {
-        String sql = "SELECT * FROM booking WHERE customer_id = ?";
+        String sql = "SELECT b.booking_id, b.customer_id, b.room_id, b.checkin_time, b.checkout_time, " +
+                "r.room_no, r.type_room, r.price " +
+                "FROM booking b " +
+                "INNER JOIN rooms r ON b.room_id = r.room_no " +
+                "WHERE b.customer_id = ?";
         List<Booking> bookings = new ArrayList<>();
         try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                while (resultSet.next()) {
-                    Booking booking = new Booking(
-                            resultSet.getInt("booking_id"),
-                            null,
-                            null,
-                            resultSet.getTimestamp("checkin_time").toLocalDateTime(),
-                            resultSet.getTimestamp("checkout_time").toLocalDateTime()
-                    );
-                    CustomerDAO customerDAO = new CustomerDAO();
-                    RoomDAO roomDAO = new RoomDAO();
-                    Customer customer = customerDAO.getById(customerId);
-                    Room room = roomDAO.getById(resultSet.getInt("room_id"));
-                    booking.setCustomer(customer);
-                    booking.setRoom(room);
-                    bookings.add(booking);
-                }
+             PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setInt(1, customerId);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            while (resultSet.next()) {
+                int bookingId = resultSet.getInt("booking_id");
+                int customerIdDB = resultSet.getInt("customer_id");
+                int roomNoDB = resultSet.getInt("room_no");
+                String typeRoom = resultSet.getString("type_room");
+                double price = resultSet.getDouble("price");
+                LocalDateTime checkinTimeDB = resultSet.getObject("checkin_time", LocalDateTime.class);
+                LocalDateTime checkoutTimeDB = resultSet.getObject("checkout_time", LocalDateTime.class);
+
+
+                Customer customer = new Customer();
+                customer.setId(customerIdDB);
+                Room room = new Room(roomNoDB, typeRoom, price, true);
+                Booking booking = new Booking(bookingId, customer, room, checkinTimeDB, checkoutTimeDB);
+                bookings.add(booking);
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return bookings;
     }
-
+    @Override
+    public List<Booking> findByRoomId(int roomId){
+        String sql = "SELECT booking_id, customer_id, room_id, checkin_time, checkout_time FROM booking WHERE room_id = ?";
+        List<Booking> bookings = new ArrayList<>();
+        try(Connection connection = DatabaseConfig.getConnection();
+            PreparedStatement preparedStatement = connection.prepareStatement(sql))
+        {
+            preparedStatement.setInt(1, roomId);
+            ResultSet resultSet = preparedStatement.executeQuery();
+            while(resultSet.next()){
+                int bookingId = resultSet.getInt("booking_id");
+                int customerIdDB = resultSet.getInt("customer_id");
+                int roomIdDB = resultSet.getInt("room_id");
+                LocalDateTime checkinTimeDB = resultSet.getObject("checkin_time", LocalDateTime.class);
+                LocalDateTime checkoutTimeDB = resultSet.getObject("checkout_time", LocalDateTime.class);
+                Customer customer = new Customer();
+                customer.setId(customerIdDB);
+                Room room = new Room();
+                room.setRoomNo(roomIdDB);
+                Booking booking = new Booking(bookingId, customer, room, checkinTimeDB, checkoutTimeDB);
+                bookings.add(booking);
+            }
+        }
+        catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return bookings;
+    }
     @Override
     public void delete(Booking booking) {
         String deleteSql = "DELETE FROM booking WHERE booking_id = ?";
@@ -93,21 +145,14 @@ public class BookingDAO implements BookingRepository {
             e.printStackTrace();
         }
     }
-
     @Override
-    public boolean hasBooking(int customerId) {
-        String sql = "SELECT COUNT(*) FROM booking WHERE customer_id = ?";
+    public void deleteAll() {
+        String deleteSql = "DELETE FROM booking";
         try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, customerId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return resultSet.getInt(1) > 0;
-                }
-            }
+             PreparedStatement deleteStatement = connection.prepareStatement(deleteSql)) {
+            deleteStatement.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return false;
     }
 }

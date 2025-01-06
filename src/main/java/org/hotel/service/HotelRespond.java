@@ -37,7 +37,7 @@ public class HotelRespond {
         printTableSeparator(header.length());
 
         for (Customer customer : customers) {
-            List<Booking> bookings = hotelService.getBookingByCustomer();
+            List<Booking> bookings = hotelService.getBookingByCustomer(customer);
             if (bookings.isEmpty()) {
                 System.out.format("| %-15s | %-15s | %-17s | %-10s | %-20s | %-10s |%n",
                         customer.getName(), "None", "None", "None", "None", "None");
@@ -45,24 +45,11 @@ public class HotelRespond {
 
             } else {
                 for (Booking booking : bookings) {
-                    if (booking.getCustomer().equals(customer)) {
-                        Room room = booking.getRoom();
-                        List<LocalDateTime[]> bookedTimes = room.getBookedTimes();
-                        if (!bookedTimes.isEmpty()) {
-                            LocalDateTime startTime = bookedTimes.get(0)[0];
-                            LocalDateTime endTime = bookedTimes.get(0)[1];
-                            String bookingTime = dtf.format(startTime) + " to " + dtf.format(endTime);
-                            System.out.format("| %-15s | %-15d | %-15s | %-10.2f | %-20s | %-10d |%n",
-                                    customer.getName(), room.getRoomNo(), room.getTypeRoom(), room.getPrice(), bookingTime, booking.getBookingId());
-                            printTableSeparator(header.length());
-
-                        } else {
-                            System.out.format("| %-15s | %-15d | %-15s | %-10.2f | %-20s | %-10d |%n",
-                                    customer.getName(), room.getRoomNo(), room.getTypeRoom(), room.getPrice(), "No booking time", booking.getBookingId());
-                            printTableSeparator(header.length());
-                        }
-                    }
-
+                    Room room = booking.getRoom();
+                    String bookingTime = dtf.format(booking.getCheckinTime()) + " to " + dtf.format(booking.getCheckoutTime());
+                    System.out.format("| %-15s | %-15d | %-15s | %-10.2f | %-20s | %-10d |%n",
+                            customer.getName(), room.getRoomNo(), room.getTypeRoom(), room.getPrice(), bookingTime, booking.getBookingId());
+                    printTableSeparator(header.length());
                 }
             }
         }
@@ -108,7 +95,11 @@ public class HotelRespond {
 
         LocalDateTime checkinDateTime = checkinDate.atStartOfDay();
         LocalDateTime checkoutDateTime = checkoutDate.atStartOfDay();
-        Room room = findRoom(roomNumber);
+        Room room = hotelService.findRoom(roomNumber);
+        if(room == null){
+            System.out.println("Room with number "+ roomNumber + " does not exist.");
+            return;
+        }
         if (!hotelService.isRoomAvailable(room, checkinDateTime, checkoutDateTime)) {
             System.out.println("Room " + roomNumber + " is already booked in this time range. Please choose a different time.");
             return;
@@ -126,24 +117,24 @@ public class HotelRespond {
     }
 
     public void viewBookedRooms() {
-        List<Booking> bookings =  hotelService.getBookingByCustomer();
+        List<Booking> bookings = hotelService.getBookingByCustomer();
         if (bookings.isEmpty()) {
-            System.out.println("No booked rooms");
+            System.out.println("No rooms booked by current customer.");
             return;
         }
-
-        String header = String.format("| %-15s | %-15s | %-17s | %-10s | %-10s |%n",
-                "Room Number", "Type Room", "Available", "Price", "Booking ID");
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+        String header = String.format("| %-15s | %-15s | %-15s | %-10s | %-20s | %-10s |%n",
+                "Room Number", "Type Room", "Available", "Price", "Booking Time", "Booking ID");
         System.out.println("Your booked rooms are: ");
         printTableSeparator(header.length());
         System.out.print(header);
         printTableSeparator(header.length());
-
         for (Booking booking : bookings) {
             Room room = booking.getRoom();
-            System.out.format("| %-15d | %-15s | %-17s | %-10.2f $/day| %-10d |%n",
+            String bookingTime = dtf.format(booking.getCheckinTime()) + " to " + dtf.format(booking.getCheckoutTime());
+            System.out.format("| %-15d | %-15s | %-15s | %-10.2f $/day| %-20s | %-10d |%n",
                     room.getRoomNo(), room.getTypeRoom(),
-                    room.isAvailable() ? "Yes" : "No", room.getPrice(), booking.getBookingId());
+                    room.isAvailable() ? "Yes" : "No", room.getPrice(), bookingTime, booking.getBookingId());
             printTableSeparator(header.length());
         }
     }
@@ -161,15 +152,24 @@ public class HotelRespond {
             return;
         }
 
+        // Display booked rooms before checkout prompt
+        System.out.println("Please check your booking information:");
+        viewBookedRooms();
+
+
         List<Booking> bookingsToCheckout = new ArrayList<>();
+        boolean checkoutAll = false; // Thêm biến flag để kiểm tra xem người dùng có muốn checkout tất cả hay không
+
         while (true) {
             System.out.println("Enter the booking ID you want to checkout (or 0 to checkout all rooms): ");
             int bookingId = getValidInt(scanner, "Please enter a valid booking ID:", 0, Integer.MAX_VALUE);
 
             if (bookingId == 0) {
                 bookingsToCheckout.addAll(customerBookings);
+                checkoutAll = true; // Gán giá trị true để biết người dùng muốn checkout tất cả
                 break;
             }
+
             Booking booking = findBooking(bookingId, customerBookings);
             if (booking == null) {
                 System.out.println("Booking with ID " + bookingId + " does not exist. Please try again.");
@@ -180,6 +180,17 @@ public class HotelRespond {
                 bookingsToCheckout.add(booking);
             }
 
+            System.out.println("Do you want to checkout another room? (y/n): ");
+            String choice = scanner.next();
+            if (!choice.equalsIgnoreCase("y")) {
+                break;
+            }
+
+        }
+
+        if (bookingsToCheckout.isEmpty()){
+            System.out.println("No bookings to checkout");
+            return;
         }
 
         try (BufferedWriter br = new BufferedWriter(new FileWriter(outputFilePath, true))) {
@@ -209,7 +220,13 @@ public class HotelRespond {
                 br.write("Check-out date: " + dtf.format(checkoutTime.toLocalDate()));
                 br.newLine();
             }
-            hotelService.removeBooking(bookingsToCheckout);
+
+            hotelService.removeBooking(bookingsToCheckout); // Xóa các booking đã checkout
+            if (checkoutAll) {
+                System.out.println("All bookings have been checked out successfully.");
+            } else {
+                System.out.println("Booking(s) checked out successfully.");
+            }
             String totalCostInfo = "Total cost: " + totalCost + " $";
             System.out.println(totalCostInfo);
             br.write(totalCostInfo);

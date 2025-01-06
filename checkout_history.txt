@@ -57,3 +57,34 @@ Check-in date: 05/01/2025
 Check-out date: 04/01/2025
 Total cost: 300.0 $
 ---------------------------------------------------
+--------------- Checkout Information ---------------
+Customer Name: diep
+Room 101 (Deluxe) - 150.00/day: -150.00$
+Check-in date: 07/01/2025
+Check-out date: 06/01/2025
+Room 101 (Deluxe) - 150.00/day: -150.00$
+Check-in date: 07/01/2025
+Check-out date: 06/01/2025
+Total cost: 300.0 $
+---------------------------------------------------
+--------------- Checkout Information ---------------
+Customer Name: diep
+Room 101 (null) - 0.00/day: -0.00$
+Check-in date: 07/01/2025
+Check-out date: 06/01/2025
+Total cost: 0.0 $
+---------------------------------------------------
+--------------- Checkout Information ---------------
+Customer Name: diep
+Room 101 (null) - 0.00/day: -0.00$
+Check-in date: 07/01/2025
+Check-out date: 06/01/2025
+Total cost: 0.0 $
+---------------------------------------------------
+--------------- Checkout Information ---------------
+Customer Name: diep
+Room 101 (Deluxe) - 150.00/day: -150.00$
+Check-in date: 07/01/2025
+Check-out date: 06/01/2025
+Total cost: 150.0 $
+---------------------------------------------------

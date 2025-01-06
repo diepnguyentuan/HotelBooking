@@ -60,36 +60,22 @@ public class HotelService {
     public void logout() {
         currentCustomer = null;
     }
-
-    public void bookRoom(int roomNumber, LocalDateTime checkinDateTime, LocalDateTime checkoutDateTime) {
+    public void bookRoom(int roomNumber, LocalDateTime checkinTime, LocalDateTime checkoutTime) {
         Room room = findRoom(roomNumber);
-        if (room == null) {
-            System.out.println("Room " + roomNumber + " does not exists.");
-            return;
-        }
-        if (isRoomAvailable(room, checkinDateTime, checkoutDateTime)) {
-            int newId = (int) (Math.random() * 1000);
-            Booking booking = new Booking(newId, currentCustomer, room, checkinDateTime, checkoutDateTime);
-            try {
-                bookingRepository.save(booking);
-            } catch (Exception e) {
-                System.out.println("Error saving the booking.");
-                e.printStackTrace();
-                return;
-            }
-            room.addBookingTime(checkinDateTime, checkoutDateTime);
-            room.setAvailable(false);
-            try {
-                roomRepository.save(room);
-            } catch (Exception e) {
-                System.out.println("Error saving the room.");
-                e.printStackTrace();
-                return;
-            }
-
+        Customer currentCustomer = getCurrentCustomer();
+        if(room != null && currentCustomer != null){
+            Booking booking = new Booking(currentCustomer, room, checkinTime, checkoutTime);
+            bookingRepository.save(booking); // Gọi bookingRepository.save thay vì roomRepository.save
+            // Find the booking id, since the id is generated in database, we should find by other parameters such as time and customer id
+            Booking savedBooking = findBookingBy(currentCustomer.getId(),room.getRoomNo(), checkinTime, checkoutTime);
+            booking.setBookingId(savedBooking.getBookingId());
+            System.out.println("Booking created successfully!");
         }
     }
-
+    //Helper function to find booking by customer and time
+    public Booking findBookingBy(int customerId, int roomId, LocalDateTime checkinTime, LocalDateTime checkoutTime){
+        return bookingRepository.findBookingBy(customerId, roomId, checkinTime, checkoutTime);
+    }
     public void cancelRoom(int roomNumber) {
         Room room = findRoom(roomNumber);
         if (room == null) {
@@ -101,24 +87,16 @@ public class HotelService {
             if (booking.getRoom().getRoomNo() == roomNumber) {
                 try {
                     bookingRepository.delete(booking);
+                    System.out.println("Room " + roomNumber + " has been cancelled successfully");
                 } catch (Exception e) {
                     System.out.println("Error deleting the booking.");
                     e.printStackTrace();
                     return;
                 }
-                room.setAvailable(true);
-                room.removeBookingTime(booking.getCheckinTime(), booking.getCheckoutTime());
-                try {
-                    roomRepository.save(room);
-                } catch (Exception e) {
-                    System.out.println("Error saving the room.");
-                    e.printStackTrace();
-                    return;
-                }
-
                 break;
             }
         }
+
     }
 
     public double calculateTotalCost(List<Booking> bookings) {
@@ -139,33 +117,41 @@ public class HotelService {
         return totalCost;
     }
     public void removeBooking(List<Booking> bookingsToRemove) {
-        if (currentCustomer == null || bookingsToRemove.isEmpty()) {
+        if (currentCustomer == null) {
+            System.out.println("You must login to do this function.");
             return;
         }
-        try {
-            for (Booking booking : bookingsToRemove) {
-                bookingRepository.delete(booking);
-            }
-        }
-        catch (Exception e) {
-            System.out.println("Error deleting the booking.");
-            e.printStackTrace();
+        if (bookingsToRemove.isEmpty()) {
+            System.out.println("No bookings to remove.");
+            return;
         }
 
+        try {
+            if (bookingsToRemove.get(0).getBookingId() == 0){
+                bookingRepository.deleteAll();
+                System.out.println("All bookings have been checked out.");
+            }
+            else {
+                for (Booking booking : bookingsToRemove) {
+                    bookingRepository.delete(booking);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error deleting booking(s).");
+            e.printStackTrace();
+        }
     }
     public boolean isRoomAvailable(Room room, LocalDateTime checkinTime, LocalDateTime checkoutTime) {
-        List<Booking> bookings = bookingRepository.findByCustomerId(currentCustomer.getId());
+        List<Booking> bookings = bookingRepository.findByRoomId(room.getRoomNo());
         for (Booking booking : bookings) {
-            if(booking.getRoom().getRoomNo() == room.getRoomNo()){
-                if (!(checkoutTime.isBefore(booking.getCheckinTime()) || checkinTime.isAfter(booking.getCheckoutTime()))) {
-                    return false;
-                }
+            if (!(checkoutTime.isBefore(booking.getCheckinTime()) || checkinTime.isAfter(booking.getCheckoutTime()))) {
+                return false;
             }
         }
         return true;
     }
 
-    private Room findRoom(int roomNumber) {
+    public Room findRoom(int roomNumber) {
         List<Room> rooms = roomRepository.getAll();
         for (Room room : rooms) {
             if (room.getRoomNo() == roomNumber) {
@@ -181,4 +167,11 @@ public class HotelService {
         }
         return bookingRepository.findByCustomerId(currentCustomer.getId());
     }
+    public List<Booking> getBookingByCustomer(Customer customer) {
+        if(customer == null){
+            return new ArrayList<>();
+        }
+        return bookingRepository.findByCustomerId(customer.getId());
+    }
+
 }

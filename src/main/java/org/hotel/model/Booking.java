@@ -9,6 +9,7 @@ public class Booking {
     private LocalDateTime checkinTime;
     private LocalDateTime checkoutTime;
 
+    // Constructor mới để tạo booking khi có bookingId
     public Booking(int bookingId, Customer customer, Room room, LocalDateTime checkinTime, LocalDateTime checkoutTime) {
         this.bookingId = bookingId;
         this.customer = customer;
@@ -16,6 +17,13 @@ public class Booking {
         this.checkinTime = checkinTime;
         this.checkoutTime = checkoutTime;
     }
+    public Booking(Customer customer, Room room, LocalDateTime checkinTime, LocalDateTime checkoutTime) {
+        this.customer = customer;
+        this.room = room;
+        this.checkinTime = checkinTime;
+        this.checkoutTime = checkoutTime;
+    }
+
 
     public Booking() {
 
